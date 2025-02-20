@@ -1,4 +1,4 @@
-import { NilQLWrapper } from 'nillion-sv-wrappers';
+import { NilQLWrapper } from 'secretvaults';
 
 /**
  * This is a standalone example of using NilQLWrapper to encrypt and decrypt data.

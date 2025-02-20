@@ -1,18 +1,18 @@
-# nillion-sv-wrappers
+# secretvaults
 
 Wrapper classes for simplifying usage of Nillion's Secret Vault and the nilQL encryption and decryption library.
 
 ## Installation
 
 ```bash
-npm install nillion-sv-wrappers
+npm install secretvaults
 ```
 
 ## NilQLWrapper: Lightweight wrapper for encryption and decryption using nilQL:
 
 - Encrypts data into shares for distributed storage across nodes
-- Handles structured data with `$allot` markers for selective encryption
-- Recombines shares and decrypts data marked `$share` using unify
+- Handles structured data with `'%allot'` markers for selective encryption
+- Recombines shares and decrypts data marked `%share` using unify
 - Manages secret keys for encryption/decryption operations
 - Recombines and decrypts shares to recover original data
 - Maintains compatibility with SecretVault timestamps
@@ -48,13 +48,13 @@ npm install nillion-sv-wrappers
 #### Write: Upload data to the specified schema collection (/api/v1/data/create)
 
 - Writes data to multiple nodes
-- Encrypts specified fields with `$allot` markers before distribution
-- Distributes encrypted shares marked `$share` across nodes
+- Encrypts specified fields with `'%allot'` markers before distribution
+- Distributes encrypted shares marked `%share` across nodes
 
 #### Read: Retrieve data from the specified schema collection that matches the provided filter (/api/v1/data/read)
 
 - Retrieves data from all nodes
-- Recombines encrypted shares marked `$share` from nodes to decrypts specified fields automatically
+- Recombines encrypted shares marked `%share` from nodes to decrypts specified fields automatically
 - Returns decrypted record
 
 #### Flush: Remove all documents in a schema collection (/api/v1/data/flush)
@@ -97,11 +97,11 @@ const secretVaultCollection = new SecretVaultWrapper(
 );
 await secretVaultCollection.init();
 
-// years_in_web3 field value is marked with $allot to show it will be encrypted
+// years_in_web3 field value is marked with '%allot' to show it will be encrypted
 const dataWritten = await secretVaultCollection.writeToNodes(
     [{
         _id: uuidv4(),
-        years_in_web3: { $allot: 4 },
+        years_in_web3: { '%allot': 4 },
         responses: [
         { rating: 5, question_number: 1 },
         { rating: 3, question_number: 2 },

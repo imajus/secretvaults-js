@@ -1,4 +1,4 @@
-import { NilQLWrapper } from 'nillion-sv-wrappers';
+import { NilQLWrapper } from 'secretvaults';
 
 /**
  * This is a standalone example of using NilQLWrapper to encrypt and decrypt data.
@@ -7,11 +7,11 @@ import { NilQLWrapper } from 'nillion-sv-wrappers';
 async function main() {
   // Example data to encrypt
   const data = {
-    name: { $allot: 'Steph' },
-    years_in_web3: { $allot: 5 },
+    name: { '%allot': 'Steph' },
+    years_in_web3: { '%allot': 5 },
     test_nested: {
       test_nested_2: {
-        test_nested_3: { $allot: 'nested 3 levels down' },
+        test_nested_3: { '%allot': 'nested 3 levels down' },
         test_nested_4: null,
       },
     },

@@ -98,22 +98,49 @@ export class SecretVaultWrapper {
    * @returns {Promise<object>} Response data
    */
   async makeRequest(nodeUrl, endpoint, token, payload, method = 'POST') {
-    const response = await fetch(`${nodeUrl}/api/v1/${endpoint}`, {
-      method,
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-      },
-      body: method === 'GET' ? null : JSON.stringify(payload),
-    });
+    try {
+      const response = await fetch(`${nodeUrl}/api/v1/${endpoint}`, {
+        method,
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        body: method === 'GET' ? null : JSON.stringify(payload),
+      });
 
-    if (!response.ok) {
-      const text = await response.text();
-      throw new Error(`HTTP error! status: ${response.status}, body: ${text}`);
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(
+          `HTTP error! status: ${response.status}, body: ${text}`
+        );
+      }
+
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return {
+          status: response.status,
+          ...data,
+        };
+      }
+      return {
+        status: response.status,
+      };
+    } catch (error) {
+      console.error(
+        `❌ Failed to ${method} ${endpoint} from ${nodeUrl}:`,
+        error.message
+      );
+      const statusMatch = error.message.match(/status: (\d+)/);
+      const bodyMatch = error.message.match(/body: ({.*})/);
+
+      const errorJson = {
+        status: statusMatch ? parseInt(statusMatch[1]) : null,
+        error: bodyMatch ? JSON.parse(bodyMatch[1]) : { errors: [error] },
+      };
+      return errorJson;
     }
-
-    return await response.json();
   }
 
   /**
@@ -146,7 +173,7 @@ export class SecretVaultWrapper {
         jwt,
         payload
       );
-      results.push({ node: node.url, result });
+      results.push({ ...result, node });
     }
     return results;
   }
@@ -159,16 +186,24 @@ export class SecretVaultWrapper {
     const results = [];
     for (const node of this.nodes) {
       const jwt = await this.generateNodeToken(node.did);
-      const result = await this.makeRequest(
-        node.url,
-        'schemas',
-        jwt,
-        {},
-        'GET'
-      );
-      results.push({ node: node.url, result });
+      try {
+        const result = await this.makeRequest(
+          node.url,
+          'schemas',
+          jwt,
+          {},
+          'GET'
+        );
+        results.push({ ...result, node });
+      } catch (error) {
+        console.error(
+          `❌ Failed to get schemas from ${node.url}:`,
+          error.message
+        );
+        results.push({ error, node });
+      }
     }
-    return results.map((result) => result.result.data);
+    return results;
   }
 
   /**
@@ -185,19 +220,31 @@ export class SecretVaultWrapper {
     const schemaPayload = {
       _id: schemaId,
       name: schemaName,
-      keys: ['_id'],
       schema,
     };
     const results = [];
     for (const node of this.nodes) {
       const jwt = await this.generateNodeToken(node.did);
-      const result = await this.makeRequest(
-        node.url,
-        'schemas',
-        jwt,
-        schemaPayload
-      );
-      results.push({ node: node.url, result });
+      try {
+        const result = await this.makeRequest(
+          node.url,
+          'schemas',
+          jwt,
+          schemaPayload
+        );
+        results.push({
+          ...result,
+          node,
+          schemaId,
+          name: schemaName,
+        });
+      } catch (error) {
+        console.error(
+          `❌ Error while creating schema on ${node.url}:`,
+          error.message
+        );
+        results.push({ error, node });
+      }
     }
     return results;
   }
@@ -220,7 +267,7 @@ export class SecretVaultWrapper {
         },
         'DELETE'
       );
-      results.push({ node: node.url, result });
+      results.push({ ...result, node, schemaId });
     }
     return results;
   }
@@ -261,10 +308,15 @@ export class SecretVaultWrapper {
           jwt,
           payload
         );
-        results.push({ node: node.url, result });
+
+        results.push({
+          ...result,
+          node,
+          schemaId: this.schemaId,
+        });
       } catch (error) {
         console.error(`❌ Failed to write to ${node.url}:`, error.message);
-        results.push({ node: node.url, error: error.message });
+        results.push({ node, error });
       }
     }
 
@@ -277,7 +329,7 @@ export class SecretVaultWrapper {
    * @returns {Promise<array>} Array of decrypted records
    */
   async readFromNodes(filter = {}) {
-    const resultsFromAllNodes = [];
+    const results = [];
 
     for (const node of this.nodes) {
       try {
@@ -289,15 +341,15 @@ export class SecretVaultWrapper {
           jwt,
           payload
         );
-        resultsFromAllNodes.push({ node: node.url, data: result.data });
+        results.push({ ...result, node });
       } catch (error) {
         console.error(`❌ Failed to read from ${node.url}:`, error.message);
-        resultsFromAllNodes.push({ node: node.url, error: error.message });
+        results.push({ error, node });
       }
     }
 
     // Group records across nodes by _id
-    const recordGroups = resultsFromAllNodes.reduce((acc, nodeResult) => {
+    const recordGroups = results.reduce((acc, nodeResult) => {
       nodeResult.data.forEach((record) => {
         const existingGroup = acc.find((group) =>
           group.shares.some((share) => share._id === record._id)
@@ -353,10 +405,10 @@ export class SecretVaultWrapper {
           jwt,
           payload
         );
-        results.push({ node: node.url, result });
+        results.push({ ...result, node });
       } catch (error) {
         console.error(`❌ Failed to write to ${node.url}:`, error.message);
-        results.push({ node: node.url, error: error.message });
+        results.push({ error, node });
       }
     }
     return results;
@@ -380,10 +432,10 @@ export class SecretVaultWrapper {
           jwt,
           payload
         );
-        results.push({ node: node.url, result });
+        results.push({ ...result, node });
       } catch (error) {
         console.error(`❌ Failed to delete from ${node.url}:`, error.message);
-        results.push({ node: node.url, error: error.message });
+        results.push({ error, node });
       }
     }
     return results;
