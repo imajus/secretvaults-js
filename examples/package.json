@@ -1,7 +1,7 @@
 {
   "name": "examples",
   "version": "1.0.0",
-  "description": "Examples of using the nillion-sv-wrappers library",
+  "description": "Examples of using the secretvaults library",
   "main": "index.js",
   "type": "module",
   "license": "AGPL-version-3.0",
@@ -12,6 +12,6 @@
   },
   "dependencies": {
     "dotenv": "^16.4.7",
-    "nillion-sv-wrappers": "../"
+    "secretvaults": "../"
   }
 }

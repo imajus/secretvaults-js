@@ -80,17 +80,17 @@ export class NilQLWrapper {
   }
 
   /**
-   * Recursively encrypts all values marked with $allot in the given data object
+   * Recursively encrypts all values marked with %allot in the given data object
    * and prepares it for secure processing.
    *
    * - Traverses the entire object structure, handling nested objects at any depth.
-   * - Encrypts values associated with the $allot key using nilql.encrypt().
-   * - Preserves non-$allot values and maintains the original object structure.
+   * - Encrypts values associated with the %allot key using nilql.encrypt().
+   * - Preserves non-%allot values and maintains the original object structure.
    * - Calls nilql.allot() on the fully processed data before returning.
    *
-   * @param {object} data - The input object containing fields marked with $allot for encryption.
+   * @param {object} data - The input object containing fields marked with %allot for encryption.
    * @throws {Error} If NilQLWrapper has not been initialized with a secret key.
-   * @returns {Promise<object>} The processed object with encrypted $allot values.
+   * @returns {Promise<object>} The processed object with encrypted %allot values.
    */
   async prepareAndAllot(data) {
     if (!this.secretKey) {
@@ -106,9 +106,9 @@ export class NilQLWrapper {
 
       for (const [key, value] of Object.entries(obj)) {
         if (typeof value === 'object' && value !== null) {
-          if ('$allot' in value) {
+          if ('%allot' in value) {
             encrypted[key] = {
-              $allot: await nilql.encrypt(this.secretKey, value.$allot),
+              '%allot': await nilql.encrypt(this.secretKey, value['%allot']),
             };
           } else {
             encrypted[key] = await encryptDeep(value); // Recurse into nested objects
