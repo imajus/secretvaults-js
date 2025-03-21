@@ -85,17 +85,17 @@ var NilQLWrapper = class {
     return decryptedData;
   }
   /**
-   * Recursively encrypts all values marked with $allot in the given data object
+   * Recursively encrypts all values marked with %allot in the given data object
    * and prepares it for secure processing.
    *
    * - Traverses the entire object structure, handling nested objects at any depth.
-   * - Encrypts values associated with the $allot key using nilql.encrypt().
-   * - Preserves non-$allot values and maintains the original object structure.
+   * - Encrypts values associated with the %allot key using nilql.encrypt().
+   * - Preserves non-%allot values and maintains the original object structure.
    * - Calls nilql.allot() on the fully processed data before returning.
    *
-   * @param {object} data - The input object containing fields marked with $allot for encryption.
+   * @param {object} data - The input object containing fields marked with %allot for encryption.
    * @throws {Error} If NilQLWrapper has not been initialized with a secret key.
-   * @returns {Promise<object>} The processed object with encrypted $allot values.
+   * @returns {Promise<object>} The processed object with encrypted %allot values.
    */
   async prepareAndAllot(data) {
     if (!this.secretKey) {
@@ -108,9 +108,9 @@ var NilQLWrapper = class {
       const encrypted = Array.isArray(obj) ? [] : {};
       for (const [key, value] of Object.entries(obj)) {
         if (typeof value === "object" && value !== null) {
-          if ("$allot" in value) {
+          if ("%allot" in value) {
             encrypted[key] = {
-              $allot: await import_nilql.nilql.encrypt(this.secretKey, value.$allot)
+              "%allot": await import_nilql.nilql.encrypt(this.secretKey, value["%allot"])
             };
           } else {
             encrypted[key] = await encryptDeep(value);
@@ -217,20 +217,46 @@ var SecretVaultWrapper = class {
    * @returns {Promise<object>} Response data
    */
   async makeRequest(nodeUrl, endpoint, token, payload, method = "POST") {
-    const response = await fetch(`${nodeUrl}/api/v1/${endpoint}`, {
-      method,
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-        Accept: "application/json"
-      },
-      body: method === "GET" ? null : JSON.stringify(payload)
-    });
-    if (!response.ok) {
-      const text = await response.text();
-      throw new Error(`HTTP error! status: ${response.status}, body: ${text}`);
+    try {
+      const response = await fetch(`${nodeUrl}/api/v1/${endpoint}`, {
+        method,
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+          Accept: "application/json"
+        },
+        body: method === "GET" ? null : JSON.stringify(payload)
+      });
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(
+          `HTTP error! status: ${response.status}, body: ${text}`
+        );
+      }
+      const contentType = response.headers.get("content-type");
+      if (contentType && contentType.includes("application/json")) {
+        const data = await response.json();
+        return {
+          status: response.status,
+          ...data
+        };
+      }
+      return {
+        status: response.status
+      };
+    } catch (error) {
+      console.error(
+        `\u274C Failed to ${method} ${endpoint} from ${nodeUrl}:`,
+        error.message
+      );
+      const statusMatch = error.message.match(/status: (\d+)/);
+      const bodyMatch = error.message.match(/body: ({.*})/);
+      const errorJson = {
+        status: statusMatch ? parseInt(statusMatch[1]) : null,
+        error: bodyMatch ? JSON.parse(bodyMatch[1]) : { errors: [error] }
+      };
+      return errorJson;
     }
-    return await response.json();
   }
   /**
    * Transforms data by encrypting specified fields across all nodes
@@ -261,7 +287,7 @@ var SecretVaultWrapper = class {
         jwt,
         payload
       );
-      results.push({ node: node.url, result });
+      results.push({ ...result, node });
     }
     return results;
   }
@@ -273,16 +299,24 @@ var SecretVaultWrapper = class {
     const results = [];
     for (const node of this.nodes) {
       const jwt = await this.generateNodeToken(node.did);
-      const result = await this.makeRequest(
-        node.url,
-        "schemas",
-        jwt,
-        {},
-        "GET"
-      );
-      results.push({ node: node.url, result });
+      try {
+        const result = await this.makeRequest(
+          node.url,
+          "schemas",
+          jwt,
+          {},
+          "GET"
+        );
+        results.push({ ...result, node });
+      } catch (error) {
+        console.error(
+          `\u274C Failed to get schemas from ${node.url}:`,
+          error.message
+        );
+        results.push({ error, node });
+      }
     }
-    return results.map((result) => result.result.data);
+    return results;
   }
   /**
    * Creates a new schema on all nodes
@@ -298,19 +332,31 @@ var SecretVaultWrapper = class {
     const schemaPayload = {
       _id: schemaId,
       name: schemaName,
-      keys: ["_id"],
       schema
     };
     const results = [];
     for (const node of this.nodes) {
       const jwt = await this.generateNodeToken(node.did);
-      const result = await this.makeRequest(
-        node.url,
-        "schemas",
-        jwt,
-        schemaPayload
-      );
-      results.push({ node: node.url, result });
+      try {
+        const result = await this.makeRequest(
+          node.url,
+          "schemas",
+          jwt,
+          schemaPayload
+        );
+        results.push({
+          ...result,
+          node,
+          schemaId,
+          name: schemaName
+        });
+      } catch (error) {
+        console.error(
+          `\u274C Error while creating schema on ${node.url}:`,
+          error.message
+        );
+        results.push({ error, node });
+      }
     }
     return results;
   }
@@ -332,7 +378,7 @@ var SecretVaultWrapper = class {
         },
         "DELETE"
       );
-      results.push({ node: node.url, result });
+      results.push({ ...result, node, schemaId });
     }
     return results;
   }
@@ -370,10 +416,14 @@ var SecretVaultWrapper = class {
           jwt,
           payload
         );
-        results.push({ node: node.url, result });
+        results.push({
+          ...result,
+          node,
+          schemaId: this.schemaId
+        });
       } catch (error) {
         console.error(`\u274C Failed to write to ${node.url}:`, error.message);
-        results.push({ node: node.url, error: error.message });
+        results.push({ node, error });
       }
     }
     return results;
@@ -384,7 +434,7 @@ var SecretVaultWrapper = class {
    * @returns {Promise<array>} Array of decrypted records
    */
   async readFromNodes(filter = {}) {
-    const resultsFromAllNodes = [];
+    const results = [];
     for (const node of this.nodes) {
       try {
         const jwt = await this.generateNodeToken(node.did);
@@ -395,13 +445,13 @@ var SecretVaultWrapper = class {
           jwt,
           payload
         );
-        resultsFromAllNodes.push({ node: node.url, data: result.data });
+        results.push({ ...result, node });
       } catch (error) {
         console.error(`\u274C Failed to read from ${node.url}:`, error.message);
-        resultsFromAllNodes.push({ node: node.url, error: error.message });
+        results.push({ error, node });
       }
     }
-    const recordGroups = resultsFromAllNodes.reduce((acc, nodeResult) => {
+    const recordGroups = results.reduce((acc, nodeResult) => {
       nodeResult.data.forEach((record) => {
         const existingGroup = acc.find(
           (group) => group.shares.some((share) => share._id === record._id)
@@ -454,10 +504,10 @@ var SecretVaultWrapper = class {
           jwt,
           payload
         );
-        results.push({ node: node.url, result });
+        results.push({ ...result, node });
       } catch (error) {
         console.error(`\u274C Failed to write to ${node.url}:`, error.message);
-        results.push({ node: node.url, error: error.message });
+        results.push({ error, node });
       }
     }
     return results;
@@ -479,10 +529,10 @@ var SecretVaultWrapper = class {
           jwt,
           payload
         );
-        results.push({ node: node.url, result });
+        results.push({ ...result, node });
       } catch (error) {
         console.error(`\u274C Failed to delete from ${node.url}:`, error.message);
-        results.push({ node: node.url, error: error.message });
+        results.push({ error, node });
       }
     }
     return results;
